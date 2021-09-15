@@ -406,8 +406,17 @@ pub mod pallet {
 			// 我选择使用：不签名但具签名信息的交易提交回链上。
 			// 原因：对数据签名可以验证这笔交易的来源，但是不需要该用户支付手续费，所以选择这种方式提交回链上。
 			// 代码流程简述：
-			// 1.fetch_dot_price_n_parse：通过 http 请求获取网站获取到 dot 价格的 json 数据，从中取出需要的部分：dot 的价格，并将其转换成要求的格式： (u64, Permill)，价格的整数部分为 u64，小数部分只取前 6 位小数，因为小数部分选取的是 Permill，六位小数作为一个 u32除以百万【1000000】。
-			// 2.submit_dot_price_unsigned_with_signed_payload：将得到的 dot 价格进行提交，将数据写入 Prices 中，如果 Prices 中的元素超过 10 个，那么就先移除第一个元素，再把最新的元素添加进去。
+			// 1.链下工作机工作时，当 block_number mod 5  == 4 时，会触发 fetch_price_info。
+			// 2.创建锁，防止多个 worker 同时执行链下计算。
+			// 3.创建锁成功之后，执行 fetch_dot_price_n_parse 函数获取并解析 dot 价格。
+			// 		1.获取 dot 价格【fetch_dot_price】： 通过 http 请求获取网站获取到 dot 价格的 json 数据，
+			//        从中取出需要的部分：dot 的价格【v["data"]["priceUsd"]】，
+			// 		2.解析价格【transfer_price_str_to_price_tuple】： 将其转换成要求的格式： (u64, Permill)，
+			//        价格的整数部分为 u64，小数部分只取前 6 位小数，因为小数部分选取的是 Permill，六位小数作为一个 u32除以百万【1000000】。
+			// 4.提交数据上链【offchain_unsigned_tx_signed_dot_price_payload】：将处理好的 dot 价格作为参数进行签名后发送交易上链，
+			// 并调用【Call::submit_dot_price_unsigned_with_signed_payload】方法，
+			// 方法具体逻辑在 【submit_dot_price_unsigned_with_signed_payload】中：将数据写入 Prices 中，如果 Prices 中的元素超过 10 个，
+			// 那么就先移除第一个元素，再把最新的元素添加到最后。
 			let mut lock = StorageLock::<BlockAndTime<Self>>::with_block_and_time_deadline(
 				b"offchain-demo-dot-price::lock",
 				LOCK_BLOCK_EXPIRATION,
